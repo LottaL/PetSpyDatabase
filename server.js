@@ -69,10 +69,10 @@ app.post("/newuser", async (req, res) => {
 app.get("/login", async (req, res) => {
     try {
         //get user info
-        let user = await userModel.findOne( {"username": req.body.username} ).exec();
+        let user = await userModel.findOne( {"username": req.params.username} ).exec();
         //compare encrypted passwords
         //if correct, create token
-        let password = req.body.password;
+        let password = req.params.password;
         let hash = user.password;
         if (await bcrypt.compare(password, hash)) {
             var token = jwt.sign({ id: user._id }, process.env.SECRET, {
