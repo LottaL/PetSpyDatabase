@@ -28,7 +28,8 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use(function(req, res, next) {
     res.header("Access-Control-Allow-Origin", "*" );
-    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, X-Access-Token");
+    res.header("Access-Control-Allow-Methods", "GET, PUT, POST, DELETE");
     next();
   });
 
@@ -39,7 +40,8 @@ app.get("/", async (req, res) => {
 //user document schema
 const userModel = mongoose.model("user", {
     username: { type : String , unique : true, required : true },
-    password: String
+    password: String,
+    email: String
 });
 
 //user document manipulation
@@ -54,7 +56,8 @@ app.post("/newuser", async (req, res) => {
             }
             let data = {
                 username: req.body.username,
-                password: hash
+                password: hash,
+                email: req.body.email
             }
             let user = new userModel(data);
             user.save();
@@ -66,7 +69,7 @@ app.post("/newuser", async (req, res) => {
 });
 
 //check username and pswd, create token
-app.get("/login", async (req, res) => {
+app.post("/login", async (req, res) => {
     try {
         //get user info
         let user = await userModel.findOne( {"username": req.body.username} ).exec();
@@ -136,14 +139,49 @@ app.get("/users/:id", async (req, res) => {
 });
 
 //Edit user info
-//Not working, IDK why
-//should probably check token
-app.put("/users/:id", async (req, res) => {
+app.put("/users/edit", async (req, res) => {
     try {
-        let user = await userModel.findById(req.params.id).exec();
-        user.set(req.body);
-        let result = await user.save();
-        res.send(result);
+        let token = req.headers['x-access-token'];
+        if (!token) return res.status(401).send({ auth: false, message: 'No token provided.' });
+        //check if token valid
+        jwt.verify(token, process.env.SECRET, async function(err, decoded) {
+            if (err) return res.status(500).send({ auth: false, message: 'Failed to authenticate token.' });          
+            //id decoded from access token
+            //find user info by id
+            let user = await userModel.findById(decoded.id, function (err, user) {
+                if (err) return res.status(500).send("There was a problem finding the user.");
+                if (!user) return res.status(404).send("No user found.");
+            }).exec();
+            
+            //if password changed, encrypt it
+            if (req.body.password) {
+                //password encryption
+                bcrypt.hash(req.body.password, rounds, (err, hash) => {
+                    //poor error handling
+                    if (err) {
+                    return err
+                    }
+                    let data = {
+                        username: req.body.username || user.username,
+                        password: hash,
+                        email: req.body.email || user.email
+                    }
+                    user.set(data);
+                    user.save()
+                    .then(result => res.send(result));
+                })
+            } else { //if not, don't touch it
+                let data = {
+                    username: req.body.username || user.username,
+                    password: user.password,
+                    email: req.body.email || user.email
+                }
+                //set&save changes
+                user.set(data);
+                user.save()
+                .then(result => res.send(result));
+            }
+        });
     } catch (error) {
         res.status(500).send(error);
     }
@@ -170,7 +208,6 @@ app.delete("/users/delete", async (req, res) => {
 
 //stream document model
 const streamModel = mongoose.model("stream", {
-    streamID: { type : String , unique : true, required : true },
     name: { type : String, required : true },
     description: String,
     sourceURL: String
@@ -201,7 +238,7 @@ app.get("/streams", async (req, res) => {
 //all stream info based on id
 app.get("/streams/:id", async (req, res) => {
     try {
-        let stream = await streamModel.find( {_id: req.params.id} ).exec();
+        let stream = await streamModel.findById(req.params.id).exec();
         res.send(stream);
     } catch (error) {
         res.status(500).send(error);
@@ -209,10 +246,9 @@ app.get("/streams/:id", async (req, res) => {
 });
 
 //stream edit
-//not working, IDK why
 app.put("/streams/:id", async (req, res) => {
     try {
-        let stream = await streamModel.find( {_id: req.params.id} ).exec();
+        let stream = await streamModel.findById(req.params.id).exec();
         stream.set(req.body);
         let result = await stream.save();
         res.send(result);
