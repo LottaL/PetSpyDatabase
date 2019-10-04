@@ -26,6 +26,10 @@ const fs = require('fs');
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+app.get("/", async (req, res) => {
+    res.status(200).send("Welcome to PetSpy database API endpoint!")
+});
+
 //user document schema
 const userModel = mongoose.model("user", {
     username: { type : String , unique : true, required : true },
